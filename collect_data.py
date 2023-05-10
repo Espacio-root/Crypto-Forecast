@@ -16,8 +16,8 @@ class Collect:
             start_time] * len(self.symbol)
         self.end_time = end_time if type(end_time) == list else [
             end_time] * len(self.symbol)
-        self.file_path = f'{symbol}_{interval}_{start_time}_{end_time}.csv'
         self.unix = unix
+        self.count = 1
 
         self.df = pd.DataFrame()
         
@@ -33,12 +33,10 @@ class Collect:
         
 
         def fetch(symbol, interval, start_time, end_time):
-
             start_time = datetime_to_unix_ms(start_time) if re.match(
                 r'(\d{2})-(\d{2})-(\d{4})', str(start_time)) else start_time
             end_time = datetime_to_unix_ms(end_time) if re.match(
                 r'(\d{2})-(\d{2})-(\d{4})', str(end_time)) else end_time
-            data = []
 
             response = requests.get(
                 f'https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit=1000&startTime={start_time}&endTime={end_time}')
@@ -46,21 +44,23 @@ class Collect:
             if response.status_code == 200:
                 data = response.json()
 
-                if data[-1][0] < end_time:
+                if data and data[-1][0] < end_time:
                     time.sleep(1)
-                    tmp_data = fetch(symbol, interval, data[-1][0], end_time)[1]
-                    data = [x + y for x, y in zip(data, tmp_data.json())]
+                    print(f'Fetched {self.count * 1000} datapoints')
+                    self.count += 1
+                    
+                    tmp_data = fetch(symbol, interval, data[-1][0], end_time)
+                    data.extend(tmp_data)
 
-                else:
-                    return response.status_code, data
             else:
-                print(
-                    f'The program was only able to fetch {len(data)} datapoints from {start_time} to {end_time}')
-                return data
+                data = []
+                print(f'The program was only able to fetch {len(data)} datapoints from {start_time} to {end_time}')
 
-        if self.file_path in os.listdir('./cache'):
-            print(f'Cache for {self.file_path} found')
-            return self.modify(pd.read_csv(f'./cache/{self.file_path}', index_col=0), symbol)
+            return data
+
+        if f'{symbol}_{interval}_{start_time}_{end_time}.csv' in os.listdir('./cache'):
+            print(f'Cache for {symbol}_{interval}_{start_time}_{end_time}.csv found')
+            return self.modify(pd.read_csv(f'./cache/{symbol}_{interval}_{start_time}_{end_time}.csv', index_col=0), symbol)
 
         data = fetch(symbol, interval, start_time, end_time)
 
@@ -78,13 +78,11 @@ class Collect:
         return df.rename(columns={x: f'{symbol}_{x}' for x in df.columns})
     
     
-
     def store(self, symbol, interval, start_time, end_time, df) -> None:
-        df.to_csv(f'./cache/{self.file_path}')
-        print(f'Cache for {self.file_path} stored')
+        df.to_csv(f'./cache/{symbol}_{interval}_{start_time}_{end_time}.csv')
+        print(f'Cache for {symbol}_{interval}_{start_time}_{end_time}.csv stored')
         
         
-
     def main(self):
         for i in range(len(self.symbol)):
             df = self.get_data(
@@ -94,6 +92,9 @@ class Collect:
                 self.df = df
             else:
                 self.df = pd.concat([self.df, df], ignore_index=False, axis=1)
+                
+            print(f'{i+1}/{len(self.symbol)}')
+            self.count = 1
 
         return self.df
 
@@ -101,5 +102,5 @@ class Collect:
 # Example
 if __name__ == '__main__':
     collect = Collect(symbol=['BTCUSDT', 'ETHUSDT'], interval='1m',
-                      start_time='01-01-2023', end_time='04-01-2023', unix=False)
+                      start_time='01-01-2023', end_time='03-01-2023', unix=False)
     collect.main()
