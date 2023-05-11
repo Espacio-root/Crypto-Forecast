@@ -122,7 +122,7 @@ class StockDataLoader:
 
         return self.train_dataloader, self.test_dataloader
 
-    def visualize(self, predicted, actual, loss):
+    def visualize(self, predicted, actual, loss, title):
         predicted = np.array(predicted).T[0]
         actual = np.array(actual)
         predicted = (predicted * self.normalize_num) + self.normalize_num  # Denormalize
@@ -133,13 +133,14 @@ class StockDataLoader:
         time_index = pd.date_range(start=pd.to_datetime(self.val_unix_start, unit='s'), periods=num_points, freq=f'{Utils.convert_to_seconds(INTERVAL)}s')
         data = {'Predicted': predicted, 'Actual': actual}
         df = pd.DataFrame(data, index=time_index)
+        df = Utils.reduce_dataframe_size(df)
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df.index, y=df['Predicted'], name='Predicted', line=dict(color='red')))
         fig.add_trace(go.Scatter(x=df.index, y=df['Actual'], name='Actual', line=dict(color='blue')))
         
         fig.update_layout(
-            title=f'{RATIO.split("_")[0]}\nLoss: {loss:.4f}',
+            title=f'{RATIO.split("_")[0]}   Loss: {loss:.4f}    {title}',
             xaxis_title='Time',
             yaxis_title='Value',
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
@@ -196,6 +197,15 @@ class Utils:
 
         fig.update_layout(xaxis_title='Epoch', yaxis_title='Loss', title='Training and Validation Losses')
         fig.show()
+        
+    def reduce_dataframe_size(df):
+        num_rows = len(df)
+        if num_rows <= 1000:
+            return df  # No need to reduce size if already within the desired limit
+        
+        indices_to_keep = np.linspace(0, num_rows - 1, num=1000, dtype=int)
+        reduced_df = df.iloc[indices_to_keep]
+        return reduced_df
 
 collect = Collect(symbol=SYMBOLS, interval=INTERVAL, start_time=START_TIME, end_time=END_TIME, unix=False)
 df = collect.main()
@@ -218,6 +228,8 @@ def train():
         model.train()
         train_loss = 0.0
 
+        predicted_train = []
+        actual_train = []
         for batch_inputs, batch_targets in train_data_loader:
             optimizer.zero_grad()
 
@@ -230,6 +242,11 @@ def train():
             optimizer.step()
 
             train_loss += loss.item()
+            
+            if (epoch + 1) % 10 == 0:
+                predicted_train.extend(outputs.detach().numpy())
+                actual_train.extend([input[0][loader.target_idx] for input in batch_inputs.detach().numpy()])
+                
 
         train_loss /= len(train_data_loader)
         train_losses.append(train_loss)
@@ -245,11 +262,13 @@ def train():
                 batch_targets = batch_targets.to(DEVICE)
 
                 outputs = model(batch_inputs)
-                predicted_validation.extend(outputs.cpu().numpy())
-                actual_validation.extend([input[0][loader.target_idx] for input in batch_inputs.cpu().numpy()])
                 loss = criterion(outputs, batch_targets.unsqueeze(1))
 
                 validation_loss += loss.item()
+                
+                if (epoch + 1) % 10 == 0:
+                    predicted_validation.extend(outputs.detach().numpy())
+                    actual_validation.extend([input[0][loader.target_idx] for input in batch_inputs.detach().numpy()])
 
         validation_loss /= len(test_data_loader)
         validation_losses.append(validation_loss)
@@ -257,7 +276,8 @@ def train():
         print(f"Epoch [{epoch+1}/{EPOCHS}], Train Loss: {train_loss:.6f}, Validation Loss: {validation_loss:.6f}")
         
         if (epoch + 1) % 10 == 0:       
-            loader.visualize(predicted_validation, actual_validation, validation_loss)
+            loader.visualize(predicted_train, actual_train, train_loss, 'Train')
+            loader.visualize(predicted_validation, actual_validation, validation_loss, 'Validation')
 
         Utils.model_checkpoint(epoch, validation_loss)
 

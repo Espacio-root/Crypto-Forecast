@@ -18,6 +18,7 @@ class Collect:
             end_time] * len(self.symbol)
         self.unix = unix
         self.count = 1
+        self.iter = 1
 
         self.df = pd.DataFrame()
         
@@ -59,7 +60,7 @@ class Collect:
             return data
 
         if f'{symbol}_{interval}_{start_time}_{end_time}.csv' in os.listdir('./cache'):
-            print(f'Cache for {symbol}_{interval}_{start_time}_{end_time}.csv found')
+            print(f'[{self.iter}/{len(self.symbol)}] Cache for {symbol}_{interval}_{start_time}_{end_time}.csv found')
             return self.modify(pd.read_csv(f'./cache/{symbol}_{interval}_{start_time}_{end_time}.csv', index_col=0), symbol)
 
         data = fetch(symbol, interval, start_time, end_time)
@@ -85,6 +86,7 @@ class Collect:
         
     def main(self):
         for i in range(len(self.symbol)):
+            self.iter = i + 1
             df = self.get_data(
                 self.symbol[i], self.interval[i], self.start_time[i], self.end_time[i])
 
@@ -93,7 +95,6 @@ class Collect:
             else:
                 self.df = pd.concat([self.df, df], ignore_index=False, axis=1)
                 
-            print(f'{i+1}/{len(self.symbol)}')
             self.count = 1
 
         return self.df
