@@ -5,7 +5,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import os
 import pandas as pd
